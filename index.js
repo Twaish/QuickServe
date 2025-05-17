@@ -52,14 +52,37 @@ app.use((err, req, res, next) => {
 })
 
 const getLocalIPv4 = () => {
+  const platform = os.platform()
+  let defaultInterface = null
+
+  try {
+    if (platform === 'win32') {
+      const output = execSync(
+        `powershell -Command "Get-NetRoute -DestinationPrefix '0.0.0.0/0' | Sort-Object -Property RouteMetric | Select-Object -First 1 | Select-Object -ExpandProperty InterfaceAlias"`,
+        { encoding: 'utf8' }
+      )
+      defaultInterface = output.trim()
+    } else if (platform === 'linux') {
+      const output = execSync(`ip route | grep default`, { encoding: 'utf8' })
+      const match = output.match(/default.* dev (\w+)/)
+      if (match) defaultInterface = match[1]
+    }
+  } catch (err) {
+    console.error('Failed to determine default network interface:', err.message)
+    return { address: '127.0.0.1', _interface: 'unknown' }
+  }
+
   const interfaces = os.networkInterfaces()
   for (const name of Object.keys(interfaces)) {
+    if (name !== defaultInterface) continue
+      
     for (const iface of interfaces[name]) {
       if (iface.family === 'IPv4' && !iface.internal) {
         return { address: iface.address, _interface: name }
       }
     }
   }
+
   return { address: '127.0.0.1', _interface: 'unknown' }
 }
 
